@@ -5,15 +5,18 @@ import { useReaderStore } from '@/lib/store/useReaderStore';
 import { translateText } from '@/lib/translation/translator';
 import { ttsService } from '@/lib/speech/tts';
 import { saveVocabularyItem } from '@/lib/db';
+import { SUPPORTED_LANGUAGES, getLanguageByCode } from '@/lib/translation/languages';
 import { TranslationResult, VocabularyItem } from '@/types';
-import { Volume2, Bookmark, Check, X, Loader2, Sparkles, BookOpen } from 'lucide-react';
+import { Volume2, Bookmark, Check, X, Loader2, Sparkles, BookOpen, ChevronDown } from 'lucide-react';
 
 export const TranslationPopup: React.FC = () => {
   const {
     activeSelection,
     setActiveSelection,
     sourceLang,
+    setSourceLang,
     targetLang,
+    setTargetLang,
     currentDoc,
     currentPage,
     ttsRate,
@@ -66,8 +69,8 @@ export const TranslationPopup: React.FC = () => {
   let left = 100;
 
   if (rect) {
-    const popupWidth = 320;
-    const popupHeight = 220;
+    const popupWidth = 330;
+    const popupHeight = 240;
     const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
     const screenHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
 
@@ -80,7 +83,6 @@ export const TranslationPopup: React.FC = () => {
 
     // Horizontal centering over selection
     left = rect.left + rect.width / 2 - popupWidth / 2;
-    // Boundary checks
     if (left < 12) left = 12;
     if (left + popupWidth > screenWidth - 12) {
       left = screenWidth - popupWidth - 12;
@@ -144,6 +146,9 @@ export const TranslationPopup: React.FC = () => {
     }
   };
 
+  const activeSrcCode = result?.detectedLanguage || (sourceLang !== 'auto' ? sourceLang : 'auto');
+  const srcLangObj = getLanguageByCode(activeSrcCode);
+
   return (
     <div
       ref={popupRef}
@@ -157,14 +162,14 @@ export const TranslationPopup: React.FC = () => {
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
-      <div className="flex items-start justify-between gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2.5">
+      <div className="flex items-start justify-between gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h4 className="font-semibold text-lg text-brand-600 dark:text-brand-400 truncate">
               {activeSelection.text}
             </h4>
             {result?.partOfSpeech && (
-              <span className="text-[11px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
+              <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
                 {result.partOfSpeech}
               </span>
             )}
@@ -195,8 +200,33 @@ export const TranslationPopup: React.FC = () => {
         </div>
       </div>
 
+      {/* Language Switch Bar inside Popup */}
+      <div className="flex items-center justify-between text-[11px] text-zinc-400 py-1.5 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold text-zinc-700 dark:text-zinc-300">
+            {srcLangObj.flag} {srcLangObj.name}
+          </span>
+          <span>➔</span>
+          <select
+            value={targetLang}
+            onChange={(e) => setTargetLang(e.target.value)}
+            className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-md font-semibold text-brand-600 dark:text-brand-400 focus:outline-none cursor-pointer"
+            title="Change output translation language"
+          >
+            {SUPPORTED_LANGUAGES.filter((l) => l.code !== 'auto').map((l) => (
+              <option key={l.code} value={l.code} className="dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100">
+                {l.flag} {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <span className="text-[10px] text-zinc-400 font-mono">
+          {result?.provider || 'Instant'}
+        </span>
+      </div>
+
       {/* Translation Body */}
-      <div className="py-3">
+      <div className="py-2.5">
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-zinc-400 py-2">
             <Loader2 className="w-4 h-4 animate-spin text-brand-500" />
@@ -204,7 +234,7 @@ export const TranslationPopup: React.FC = () => {
           </div>
         ) : result ? (
           <div className="space-y-2">
-            <div className="text-base font-medium text-zinc-800 dark:text-zinc-100 leading-snug">
+            <div className="text-base font-semibold text-zinc-900 dark:text-zinc-100 leading-snug">
               {result.translatedText}
             </div>
 
@@ -227,7 +257,7 @@ export const TranslationPopup: React.FC = () => {
       <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs">
         <span className="text-[11px] text-zinc-400 flex items-center gap-1">
           <Sparkles className="w-3 h-3 text-brand-500" />
-          {result?.provider || 'Instant'}
+          <span>Click word or select phrase</span>
         </span>
 
         <button

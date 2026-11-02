@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useReaderStore } from '@/lib/store/useReaderStore';
-import { SUPPORTED_LANGUAGES } from '@/lib/translation/languages';
-import { translateText } from '@/lib/translation/translator';
+import { saveDocument } from '@/lib/db';
+import { LanguageSelector } from '@/components/common/LanguageSelector';
 import {
   ArrowLeft,
   ZoomIn,
@@ -25,6 +25,7 @@ import {
   HelpCircle,
   Loader2,
   Languages,
+  ArrowRightLeft,
 } from 'lucide-react';
 
 interface TopToolbarProps {
@@ -87,8 +88,33 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onTranslateFullPage, voc
     else setTheme('light');
   };
 
+  const handleSourceLangChange = (code: string) => {
+    setSourceLang(code);
+    if (currentDoc) {
+      currentDoc.sourceLanguage = code;
+      saveDocument(currentDoc);
+    }
+  };
+
+  const handleTargetLangChange = (code: string) => {
+    setTargetLang(code);
+    if (currentDoc) {
+      currentDoc.targetLanguage = code;
+      saveDocument(currentDoc);
+    }
+  };
+
+  const handleSwapLangs = () => {
+    if (sourceLang !== 'auto') {
+      const prevSource = sourceLang;
+      const prevTarget = targetLang;
+      handleSourceLangChange(prevTarget);
+      handleTargetLangChange(prevSource);
+    }
+  };
+
   return (
-    <header className="sticky top-0 z-50 w-full h-16 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-3 md:px-5 flex items-center justify-between gap-2 text-zinc-800 dark:text-zinc-100 select-none shadow-sm">
+    <header className="sticky top-0 z-50 w-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-3 md:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2.5 text-zinc-800 dark:text-zinc-100 select-none shadow-sm">
       {/* Left: Back & Document Title & Sidebars */}
       <div className="flex items-center gap-2 min-w-0">
         <button
@@ -118,8 +144,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onTranslateFullPage, voc
           </button>
         </div>
 
-        <div className="hidden md:flex flex-col min-w-0 ml-1">
-          <h1 className="text-sm font-bold truncate max-w-[180px] lg:max-w-xs" title={currentDoc?.title}>
+        <div className="hidden lg:flex flex-col min-w-0 ml-1">
+          <h1 className="text-sm font-bold truncate max-w-[160px]" title={currentDoc?.title}>
             {currentDoc?.title || 'Document Reader'}
           </h1>
           <span className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider">
@@ -160,14 +186,14 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onTranslateFullPage, voc
 
         <button
           onClick={() => setGoToPageModalOpen(true)}
-          className="hidden sm:inline-flex items-center text-[11px] font-mono px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 border border-zinc-200 dark:border-zinc-700/60"
+          className="inline-flex items-center text-[11px] font-mono px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 border border-zinc-200 dark:border-zinc-700/60"
           title="Open Go to Page Quick Jump (Ctrl+G)"
         >
           ⌘G
         </button>
 
         {/* Zoom controls */}
-        <div className="hidden lg:flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800 rounded-xl p-1 border border-zinc-200 dark:border-zinc-700/60">
+        <div className="hidden md:flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800 rounded-xl p-1 border border-zinc-200 dark:border-zinc-700/60">
           <button
             onClick={zoomOut}
             disabled={zoom <= 0.5}
@@ -194,25 +220,37 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onTranslateFullPage, voc
         </div>
       </div>
 
-      {/* Right: Languages, Translate Page, Vocabulary, Learning Tools, Theme */}
-      <div className="flex items-center gap-1.5 shrink-0">
-        {/* Language selectors */}
-        <div className="hidden sm:flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1 rounded-xl border border-zinc-200 dark:border-zinc-700/60">
-          <Languages className="w-3.5 h-3.5 text-brand-500" />
-          <select
-            value={targetLang}
-            onChange={(e) => setTargetLang(e.target.value)}
-            className="bg-transparent text-xs font-medium focus:outline-none cursor-pointer text-zinc-700 dark:text-zinc-200"
-            title="Translate to language"
-          >
-            {SUPPORTED_LANGUAGES.filter((l) => l.code !== 'auto').map((l) => (
-              <option key={l.code} value={l.code} className="dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100">
-                {l.flag} {l.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* Prominent Language Bar: Document Language ➔ Output Language */}
+      <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-2xl border border-zinc-200 dark:border-zinc-700/80 shadow-sm">
+        <LanguageSelector
+          value={sourceLang}
+          onChange={handleSourceLangChange}
+          includeAuto={true}
+          compact={true}
+          className="w-32"
+        />
 
+        <button
+          type="button"
+          onClick={handleSwapLangs}
+          disabled={sourceLang === 'auto'}
+          className="p-1.5 rounded-lg text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 disabled:opacity-30 transition-colors"
+          title="Swap source and target languages"
+        >
+          <ArrowRightLeft className="w-3.5 h-3.5" />
+        </button>
+
+        <LanguageSelector
+          value={targetLang}
+          onChange={handleTargetLangChange}
+          includeAuto={false}
+          compact={true}
+          className="w-32"
+        />
+      </div>
+
+      {/* Right Tools: Side-by-side, Full page translate, Vocab, Flashcards, Stats, Theme */}
+      <div className="flex items-center gap-1.5 shrink-0">
         {/* Side-by-side mode toggle */}
         <button
           onClick={toggleSideBySide}
@@ -231,7 +269,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onTranslateFullPage, voc
           <button
             onClick={onTranslateFullPage}
             disabled={isTranslatingPage}
-            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-950/50 hover:bg-brand-100 dark:hover:bg-brand-900/50 text-brand-600 dark:text-brand-400 text-xs font-semibold border border-brand-200 dark:border-brand-800/60 transition-all"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-950/50 hover:bg-brand-100 dark:hover:bg-brand-900/50 text-brand-600 dark:text-brand-400 text-xs font-semibold border border-brand-200 dark:border-brand-800/60 transition-all"
             title="Translate this entire page"
           >
             {isTranslatingPage ? (
@@ -293,7 +331,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onTranslateFullPage, voc
         {/* Shortcuts */}
         <button
           onClick={() => setShortcutsOpen(true)}
-          className="p-2 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors hidden sm:inline-flex"
+          className="p-2 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors hidden lg:inline-flex"
           title="Keyboard Shortcuts (?)"
         >
           <HelpCircle className="w-4 h-4" />

@@ -16,6 +16,8 @@ export async function POST(req: NextRequest) {
     }
 
     const trimmedText = text.trim();
+    const cleanSource = !sourceLang || sourceLang === 'auto' ? 'auto' : sourceLang.toLowerCase();
+    const cleanTarget = !targetLang ? 'en' : targetLang.toLowerCase();
 
     // 1. Try DeepL if configured
     if (process.env.DEEPL_API_KEY) {
@@ -28,9 +30,9 @@ export async function POST(req: NextRequest) {
 
         const params = new URLSearchParams();
         params.append('text', trimmedText);
-        params.append('target_lang', targetLang.toUpperCase());
-        if (sourceLang && sourceLang !== 'auto') {
-          params.append('source_lang', sourceLang.toUpperCase());
+        params.append('target_lang', cleanTarget.toUpperCase());
+        if (cleanSource !== 'auto') {
+          params.append('source_lang', cleanSource.toUpperCase());
         }
 
         const res = await fetch(endpoint, {
@@ -53,11 +55,11 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (err) {
-        console.warn('DeepL translation failed, trying fallback...', err);
+        console.warn('DeepL translation failed, trying next provider...', err);
       }
     }
 
-    // 2. Try Google Translate API if configured
+    // 2. Try Google Cloud Translation API if configured
     if (process.env.GOOGLE_TRANSLATE_API_KEY) {
       try {
         const googleKey = process.env.GOOGLE_TRANSLATE_API_KEY;
@@ -68,8 +70,8 @@ export async function POST(req: NextRequest) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             q: trimmedText,
-            target: targetLang,
-            source: sourceLang === 'auto' ? undefined : sourceLang,
+            target: cleanTarget,
+            source: cleanSource === 'auto' ? undefined : cleanSource,
             format: 'text',
           }),
         });
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (err) {
-        console.warn('Google Translate failed, trying fallback...', err);
+        console.warn('Google Cloud Translate failed, trying next provider...', err);
       }
     }
 
@@ -99,8 +101,8 @@ export async function POST(req: NextRequest) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             q: trimmedText,
-            source: sourceLang === 'auto' ? 'auto' : sourceLang,
-            target: targetLang,
+            source: cleanSource,
+            target: cleanTarget,
             api_key: process.env.LIBRETRANSLATE_API_KEY || undefined,
           }),
         });
@@ -116,31 +118,85 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (err) {
-        console.warn('LibreTranslate failed, trying fallback...', err);
+        console.warn('LibreTranslate failed, trying next provider...', err);
       }
     }
 
-    // 4. Free Fallback: MyMemory API (supports 100+ languages, 10,000 words/day free)
+    // 4. Primary Free Provider: Google Public Web Translate Engine (supports all 100+ languages, auto-detect, POS & romanization)
     try {
-      const srcPair = sourceLang === 'auto' ? '' : sourceLang;
-      const langPair = `${srcPair}|${targetLang}`;
-      const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
+      const gtxUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${cleanSource}&tl=${cleanTarget}&dt=t&dt=bd&dt=rm&q=${encodeURIComponent(
         trimmedText
-      )}&langpair=${encodeURIComponent(langPair)}`;
+      )}`;
 
-      const res = await fetch(myMemoryUrl, {
+      const res = await fetch(gtxUrl, {
         headers: {
-          'User-Agent': 'LinguaPDF-Pro/1.0',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         },
       });
 
       if (res.ok) {
         const data = await res.json();
+        // data[0] contains translated segments: [[translated, original], ...]
+        if (data && Array.isArray(data[0])) {
+          const translatedParts: string[] = [];
+          let romanization: string | undefined = undefined;
+
+          for (const item of data[0]) {
+            if (item && item[0]) {
+              translatedParts.push(item[0]);
+            }
+            // dt=rm romanization
+            if (item && item[3]) {
+              romanization = item[3];
+            }
+          }
+
+          const translatedText = translatedParts.join('');
+          const detectedLanguage = data[2] || (cleanSource !== 'auto' ? cleanSource : undefined);
+
+          // Part of speech from data[1] if single word
+          let partOfSpeech: string | undefined = undefined;
+          if (data[1] && Array.isArray(data[1]) && data[1][0] && data[1][0][0]) {
+            partOfSpeech = data[1][0][0]; // e.g. "noun", "verb", "adjective"
+          }
+
+          if (translatedText) {
+            return NextResponse.json({
+              translatedText,
+              detectedLanguage,
+              romanization,
+              partOfSpeech,
+              provider: 'Google (Instant)',
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Primary free translate failed, trying MyMemory...', err);
+    }
+
+    // 5. Fallback Free Provider: MyMemory
+    try {
+      const srcPair = cleanSource === 'auto' ? 'es' : cleanSource; // default fallback if auto
+      const langPair = `${srcPair}|${cleanTarget}`;
+      const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
+        trimmedText
+      )}&langpair=${encodeURIComponent(langPair)}`;
+
+      const res = await fetch(myMemoryUrl);
+      if (res.ok) {
+        const data = await res.json();
         const translation = data.responseData?.translatedText;
-        if (translation && translation !== 'NO QUERY SPECIFIED' && !translation.startsWith('MYMEMORY WARNING:')) {
+        if (
+          translation &&
+          translation !== 'NO QUERY SPECIFIED' &&
+          !translation.startsWith('MYMEMORY WARNING:') &&
+          !translation.startsWith('INVALID LANGUAGE PAIR')
+        ) {
           return NextResponse.json({
             translatedText: translation,
-            detectedLanguage: sourceLang !== 'auto' ? sourceLang : undefined,
+            detectedLanguage: srcPair,
             provider: 'MyMemory (Free)',
           });
         }
@@ -149,33 +205,10 @@ export async function POST(req: NextRequest) {
       console.warn('MyMemory fallback failed:', err);
     }
 
-    // 5. Ultimate Fallback: Lingva public instances
-    try {
-      const lingvaUrl = `https://lingva.ml/api/v1/${sourceLang === 'auto' ? 'auto' : sourceLang}/${targetLang}/${encodeURIComponent(
-        trimmedText
-      )}`;
-      const res = await fetch(lingvaUrl, {
-        headers: { 'User-Agent': 'LinguaPDF-Pro/1.0' },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.translation) {
-          return NextResponse.json({
-            translatedText: data.translation,
-            detectedLanguage: data.info?.detectedSource,
-            provider: 'Lingva (Free)',
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('Lingva fallback failed:', err);
-    }
-
-    // If all providers fail or network is offline
     return NextResponse.json({
-      translatedText: `[Translation unavailable: ${trimmedText}]`,
-      error: 'All translation providers failed',
-      provider: 'Offline fallback',
+      translatedText: trimmedText,
+      detectedLanguage: cleanSource !== 'auto' ? cleanSource : undefined,
+      provider: 'Raw text (Offline)',
     });
   } catch (error: any) {
     return NextResponse.json(

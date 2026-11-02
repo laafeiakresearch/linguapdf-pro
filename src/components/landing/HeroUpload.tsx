@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { saveDocument } from '@/lib/db';
 import { DocumentRecord, DocumentType } from '@/types';
 import { loadPdfDocument } from '@/lib/pdf/pdfLoader';
+import { LanguageSelector } from '@/components/common/LanguageSelector';
 import {
   UploadCloud,
   FileText,
@@ -14,11 +15,31 @@ import {
   Sparkles,
   ShieldCheck,
   Zap,
+  ArrowRightLeft,
+  Languages,
 } from 'lucide-react';
+
+const POPULAR_LANGS = [
+  { code: 'auto', label: 'Auto Detect', flag: '🌐' },
+  { code: 'es', label: 'Spanish', flag: '🇪🇸' },
+  { code: 'fr', label: 'French', flag: '🇫🇷' },
+  { code: 'de', label: 'German', flag: '🇩🇪' },
+  { code: 'ja', label: 'Japanese', flag: '🇯🇵' },
+  { code: 'it', label: 'Italian', flag: '🇮🇹' },
+  { code: 'ru', label: 'Russian', flag: '🇷🇺' },
+  { code: 'hi', label: 'Hindi', flag: '🇮🇳' },
+  { code: 'zh', label: 'Chinese', flag: '🇨🇳' },
+  { code: 'ar', label: 'Arabic', flag: '🇸🇦' },
+  { code: 'ko', label: 'Korean', flag: '🇰🇷' },
+  { code: 'pt', label: 'Portuguese', flag: '🇵🇹' },
+];
 
 export const HeroUpload: React.FC = () => {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [docLang, setDocLang] = useState<string>('auto');
+  const [targetLang, setTargetLang] = useState<string>('en');
 
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -69,10 +90,9 @@ export const HeroUpload: React.FC = () => {
         totalPages: Math.max(1, totalPages),
         lastReadPage: 1,
         lastReadAt: Date.now(),
-        sourceLanguage: 'auto',
-        targetLanguage: 'en',
+        sourceLanguage: docLang,
+        targetLanguage: targetLang,
         createdAt: Date.now(),
-        // Ensure the ArrayBuffer stored in IndexedDB is fresh and non-detached
         fileData: typeof fileData === 'string' ? fileData : fileData.slice(0),
         textContent,
       };
@@ -111,8 +131,8 @@ export const HeroUpload: React.FC = () => {
         totalPages: 1,
         lastReadPage: 1,
         lastReadAt: Date.now(),
-        sourceLanguage: 'auto',
-        targetLanguage: 'en',
+        sourceLanguage: docLang,
+        targetLanguage: targetLang,
         createdAt: Date.now(),
         fileData: pasteText,
         textContent: pasteText,
@@ -154,8 +174,8 @@ export const HeroUpload: React.FC = () => {
         totalPages,
         lastReadPage: 1,
         lastReadAt: Date.now(),
-        sourceLanguage: 'auto',
-        targetLanguage: 'en',
+        sourceLanguage: docLang,
+        targetLanguage: targetLang,
         createdAt: Date.now(),
         fileData: arrayBuffer.slice(0),
       };
@@ -168,8 +188,83 @@ export const HeroUpload: React.FC = () => {
     }
   };
 
+  const handleSwapLangs = () => {
+    if (docLang !== 'auto') {
+      const prev = docLang;
+      setDocLang(targetLang);
+      setTargetLang(prev);
+    }
+  };
+
   return (
     <div className="w-full max-w-3xl mx-auto">
+      {/* Language Pair Selector Card */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-5 shadow-xl mb-6 text-left">
+        <div className="flex items-center gap-2 mb-3">
+          <Languages className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+          <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+            Language Settings
+          </h4>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          {/* Document Language */}
+          <div className="w-full sm:flex-1">
+            <LanguageSelector
+              label="Document Language (From)"
+              value={docLang}
+              onChange={setDocLang}
+              includeAuto={true}
+            />
+          </div>
+
+          {/* Swap Button */}
+          <div className="sm:pt-5 shrink-0">
+            <button
+              type="button"
+              onClick={handleSwapLangs}
+              disabled={docLang === 'auto'}
+              className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500 hover:text-brand-600 disabled:opacity-40 transition-colors"
+              title="Swap languages"
+            >
+              <ArrowRightLeft className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Target Language */}
+          <div className="w-full sm:flex-1">
+            <LanguageSelector
+              label="Translate Into (Target)"
+              value={targetLang}
+              onChange={setTargetLang}
+              includeAuto={false}
+            />
+          </div>
+        </div>
+
+        {/* Quick Language Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pt-3.5 mt-3.5 border-t border-zinc-100 dark:border-zinc-800 no-scrollbar">
+          <span className="text-[11px] font-semibold text-zinc-400 shrink-0 mr-1">
+            Document:
+          </span>
+          {POPULAR_LANGS.map((lang) => (
+            <button
+              key={lang.code}
+              type="button"
+              onClick={() => setDocLang(lang.code)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold shrink-0 flex items-center gap-1.5 transition-all ${
+                docLang === lang.code
+                  ? 'bg-brand-600 text-white shadow-sm shadow-brand-500/20'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+              }`}
+            >
+              <span>{lang.flag}</span>
+              <span>{lang.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="flex items-center justify-center gap-1 p-1 bg-zinc-200/60 dark:bg-zinc-800/60 backdrop-blur-md rounded-2xl max-w-sm mx-auto mb-6">
         <button
@@ -240,7 +335,7 @@ export const HeroUpload: React.FC = () => {
           {loading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-6 text-brand-600 dark:text-brand-400">
               <Loader2 className="w-10 h-10 animate-spin" />
-              <p className="font-semibold text-sm">Processing document & initializing worker...</p>
+              <p className="font-semibold text-sm">Processing document & loading viewer...</p>
             </div>
           ) : (
             <div className="space-y-4">

@@ -32,12 +32,9 @@ export const PdfPageView: React.FC<PdfPageViewProps> = ({ pdfDoc, pageNumber }) 
         const entry = entries[0];
         if (entry.isIntersecting) {
           setIsVisible(true);
-          // If page takes up significant viewport, update current page
           if (entry.intersectionRatio > 0.4) {
             setCurrentPage(pageNumber);
           }
-        } else {
-          // Keep rendered canvas, but don't re-render offscreen
         }
       },
       {
@@ -91,14 +88,33 @@ export const PdfPageView: React.FC<PdfPageViewProps> = ({ pdfDoc, pageNumber }) 
 
         setIsRendered(true);
 
-        // Extract Text Layer
+        // Extract Text Layer with precise coordinates
         const content = await page.getTextContent();
         if (isCancelled) return;
 
         if (content.items.length === 0) {
           setHasScannedContent(true);
         } else {
-          setTextItems(content.items);
+          const displayViewport = page.getViewport({ scale: zoom });
+          const positioned = content.items.map((item: any) => {
+            if (!item.transform) return item;
+            const [left, top] = displayViewport.convertToViewportPoint(
+              item.transform[4],
+              item.transform[5]
+            );
+            const fontHeight = Math.max(
+              11,
+              Math.hypot(item.transform[0], item.transform[1]) * zoom
+            );
+            return {
+              ...item,
+              left,
+              top: Math.max(0, top - fontHeight),
+              fontSize: fontHeight,
+            };
+          });
+
+          setTextItems(positioned);
           setHasScannedContent(false);
         }
       } catch (err) {
@@ -119,7 +135,6 @@ export const PdfPageView: React.FC<PdfPageViewProps> = ({ pdfDoc, pageNumber }) 
     setIsOcrLoading(true);
 
     try {
-      // Dynamic import to keep initial bundle ultra fast
       const { createWorker } = await import('tesseract.js');
       const worker = await createWorker('eng');
       const dataUrl = canvasRef.current.toDataURL();
@@ -146,10 +161,13 @@ export const PdfPageView: React.FC<PdfPageViewProps> = ({ pdfDoc, pageNumber }) 
   // Click & Selection handlers for words and sentences
   const handleWordClick = (word: string, sentence: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const cleanWord = word.replace(/[.,/#!$%^&*;:{}=\-_`~()?"'«»]/g, '').trim();
+    if (!cleanWord) return;
+
     const targetRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 
     setActiveSelection({
-      text: word.replace(/[.,/#!$%^&*;:{}=\-_`~()?"'«»]/g, '').trim(),
+      text: cleanWord,
       sentence: sentence.trim(),
       rect: {
         top: targetRect.top,
@@ -228,7 +246,7 @@ export const PdfPageView: React.FC<PdfPageViewProps> = ({ pdfDoc, pageNumber }) 
         } ${theme === 'dark' ? 'filter invert hue-rotate-180 contrast-90 brightness-95' : ''}`}
       />
 
-      {/* Interactive Text Layer for Word Clicking & Hovering */}
+      {/* Pixel-aligned Interactive Text Layer */}
       {isRendered && textItems.length > 0 && (
         <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-xl">
           <div className="w-full h-full relative pointer-events-auto select-text">
@@ -236,13 +254,26 @@ export const PdfPageView: React.FC<PdfPageViewProps> = ({ pdfDoc, pageNumber }) 
               const text = item.str || '';
               if (!text.trim()) return null;
 
-              // Break item into words for fine-grained clicking
               const words = text.split(/(\s+)/);
 
               return (
                 <span
                   key={idx}
-                  className="inline-block text-transparent hover:text-inherit hover:bg-brand-500/10 cursor-pointer select-text transition-colors"
+                  style={
+                    item.left !== undefined
+                      ? {
+                          position: 'absolute',
+                          left: `${item.left}px`,
+                          top: `${item.top}px`,
+                          fontSize: `${item.fontSize}px`,
+                          lineHeight: '1',
+                          whiteSpace: 'pre',
+                          color: 'transparent',
+                          transformOrigin: '0% 0%',
+                        }
+                      : { display: 'inline-block', color: 'transparent' }
+                  }
+                  className="select-text"
                 >
                   {words.map((w: string, wIdx: number) => {
                     const cleanWord = w.trim();
@@ -252,7 +283,7 @@ export const PdfPageView: React.FC<PdfPageViewProps> = ({ pdfDoc, pageNumber }) 
                       <span
                         key={wIdx}
                         onClick={(e) => handleWordClick(cleanWord, text, e)}
-                        className="hover:underline hover:decoration-brand-500 hover:decoration-2 cursor-pointer"
+                        className="hover:bg-yellow-300/40 dark:hover:bg-yellow-400/30 hover:underline hover:decoration-brand-500 hover:decoration-2 cursor-pointer rounded transition-colors inline-block"
                         title={`Click to translate "${cleanWord}"`}
                       >
                         {w}
