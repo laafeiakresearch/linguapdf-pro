@@ -209,3 +209,4 @@ LinguaPDF Pro is built with Next.js App Router and is 100% ready for one-click V
 ## 🔒 Privacy Guarantee
 All documents (PDFs, DOCX, and Text) are processed and parsed strictly inside the user's browser client via WebAssembly and Web Workers. No document files or reading logs are ever transmitted to or stored on any server.
 "# linguapdf-pro" 
+"# linguapdf-pro" 
