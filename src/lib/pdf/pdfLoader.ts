@@ -12,22 +12,30 @@ export async function getPdfJs() {
 
   if (!pdfjsLib) {
     pdfjsLib = await import('pdfjs-dist');
-    // Configure worker
-    const workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+    // Serve worker locally from public/ for instant 0ms load and offline support
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
   }
 
   return pdfjsLib;
 }
 
-export async function loadPdfDocument(source: ArrayBuffer | string) {
+export async function loadPdfDocument(source: ArrayBuffer | string | Uint8Array) {
   const pdfjs = await getPdfJs();
   if (!pdfjs) throw new Error('PDF.js could not be initialized');
 
-  const loadingTask = pdfjs.getDocument(
-    typeof source === 'string' ? source : { data: source }
-  );
+  let dataInput: any;
+  if (typeof source === 'string') {
+    dataInput = source;
+  } else if (source instanceof ArrayBuffer) {
+    // CRITICAL: Always slice buffer so postMessage transfer never detaches the original ArrayBuffer!
+    dataInput = { data: new Uint8Array(source.slice(0)) };
+  } else if (ArrayBuffer.isView(source)) {
+    dataInput = { data: new Uint8Array(source.buffer.slice(0)) };
+  } else {
+    dataInput = { data: source };
+  }
 
+  const loadingTask = pdfjs.getDocument(dataInput);
   return loadingTask.promise;
 }
 

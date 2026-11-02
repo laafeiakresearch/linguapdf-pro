@@ -75,7 +75,11 @@ export function getDB(): Promise<IDBPDatabase<LinguaPDFDB>> {
 // Document operations
 export async function saveDocument(doc: DocumentRecord): Promise<void> {
   const db = await getDB();
-  await db.put('documents', doc);
+  const safeDoc: DocumentRecord = { ...doc };
+  if (safeDoc.fileData && safeDoc.fileData instanceof ArrayBuffer) {
+    safeDoc.fileData = safeDoc.fileData.slice(0);
+  }
+  await db.put('documents', safeDoc);
 }
 
 export async function getDocument(id: string): Promise<DocumentRecord | undefined> {
@@ -97,12 +101,24 @@ export async function deleteDocument(id: string): Promise<void> {
 }
 
 export async function updateDocumentProgress(id: string, pageNumber: number): Promise<void> {
-  const db = await getDB();
-  const doc = await db.get('documents', id);
-  if (doc) {
-    doc.lastReadPage = pageNumber;
-    doc.lastReadAt = Date.now();
-    await db.put('documents', doc);
+  try {
+    const db = await getDB();
+    const doc = await db.get('documents', id);
+    if (doc) {
+      doc.lastReadPage = pageNumber;
+      doc.lastReadAt = Date.now();
+      if (doc.fileData && doc.fileData instanceof ArrayBuffer) {
+        // If buffer was detached in memory, don't crash put operation
+        if (doc.fileData.byteLength === 0) {
+          delete doc.fileData;
+        } else {
+          doc.fileData = doc.fileData.slice(0);
+        }
+      }
+      await db.put('documents', doc);
+    }
+  } catch (err) {
+    console.warn('Failed to update reading progress:', err);
   }
 }
 

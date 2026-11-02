@@ -37,12 +37,12 @@ export const HeroUpload: React.FC = () => {
       const ext = file.name.split('.').pop()?.toLowerCase();
       let type: DocumentType = 'pdf';
       let totalPages = 1;
-      let fileData: ArrayBuffer | string = await file.arrayBuffer();
+      let fileData: ArrayBuffer | string;
       let textContent: string | undefined = undefined;
 
       if (ext === 'docx') {
         type = 'docx';
-        // Mammoth will process on read
+        fileData = await file.arrayBuffer();
       } else if (ext === 'txt') {
         type = 'txt';
         const text = await file.text();
@@ -50,8 +50,10 @@ export const HeroUpload: React.FC = () => {
         textContent = text;
       } else {
         type = 'pdf';
+        fileData = await file.arrayBuffer();
         try {
-          const pdf = await loadPdfDocument(fileData);
+          // Pass a sliced copy so fileData is never detached by Web Worker transfer
+          const pdf = await loadPdfDocument(fileData.slice(0));
           totalPages = pdf.numPages;
         } catch (e) {
           console.warn('PDF page count preview error:', e);
@@ -70,7 +72,8 @@ export const HeroUpload: React.FC = () => {
         sourceLanguage: 'auto',
         targetLanguage: 'en',
         createdAt: Date.now(),
-        fileData,
+        // Ensure the ArrayBuffer stored in IndexedDB is fresh and non-detached
+        fileData: typeof fileData === 'string' ? fileData : fileData.slice(0),
         textContent,
       };
 
@@ -134,7 +137,13 @@ export const HeroUpload: React.FC = () => {
       if (!res.ok) throw new Error('Failed to download document from URL');
 
       const arrayBuffer = await res.arrayBuffer();
-      const pdf = await loadPdfDocument(arrayBuffer);
+      let totalPages = 1;
+      try {
+        const pdf = await loadPdfDocument(arrayBuffer.slice(0));
+        totalPages = pdf.numPages;
+      } catch (e) {
+        console.warn('URL PDF preview error:', e);
+      }
 
       const docId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const docRecord: DocumentRecord = {
@@ -142,13 +151,13 @@ export const HeroUpload: React.FC = () => {
         title: urlInput.split('/').pop()?.split('?')[0] || 'Web Document',
         type: 'pdf',
         size: arrayBuffer.byteLength,
-        totalPages: pdf.numPages,
+        totalPages,
         lastReadPage: 1,
         lastReadAt: Date.now(),
         sourceLanguage: 'auto',
         targetLanguage: 'en',
         createdAt: Date.now(),
-        fileData: arrayBuffer,
+        fileData: arrayBuffer.slice(0),
       };
 
       await saveDocument(docRecord);
