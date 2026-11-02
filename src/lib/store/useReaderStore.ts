@@ -1,12 +1,19 @@
 import { create } from 'zustand';
 import { DocumentRecord, ReaderTheme, ReaderLayout } from '@/types';
 import { updateDocumentProgress } from '../db';
+import { inferLanguageFromTitle } from '../translation/languages';
 
 interface SelectionState {
   text: string;
   sentence?: string;
   rect?: { top: number; left: number; bottom: number; right: number; width: number; height: number };
   pageNumber?: number;
+}
+
+export interface OcrProgressInfo {
+  status: string;
+  percent: number;
+  pageNumber: number;
 }
 
 interface ReaderState {
@@ -19,6 +26,7 @@ interface ReaderState {
   sourceLang: string;
   targetLang: string;
   ttsRate: number;
+  ttsPitch: number;
   ttsVoiceURI?: string;
 
   // Modals & Panels
@@ -31,6 +39,12 @@ interface ReaderState {
   isQuizModalOpen: boolean;
   isStatsOpen: boolean;
   isShortcutsOpen: boolean;
+  isAudioModalOpen: boolean;
+  isOcrModalOpen: boolean;
+
+  // OCR state
+  ocrTriggerPage: number | null;
+  ocrProgress: OcrProgressInfo | null;
 
   // Page translations cache
   pageTranslations: Record<number, string>;
@@ -55,6 +69,7 @@ interface ReaderState {
   setSourceLang: (lang: string) => void;
   setTargetLang: (lang: string) => void;
   setTtsRate: (rate: number) => void;
+  setTtsPitch: (pitch: number) => void;
   setTtsVoiceURI: (uri?: string) => void;
 
   toggleThumbnails: () => void;
@@ -66,6 +81,11 @@ interface ReaderState {
   setQuizModalOpen: (open: boolean) => void;
   setStatsOpen: (open: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
+  setAudioModalOpen: (open: boolean) => void;
+  setOcrModalOpen: (open: boolean) => void;
+
+  triggerOcrForPage: (pageNumber: number | null) => void;
+  setOcrProgress: (progress: OcrProgressInfo | null) => void;
 
   setActiveSelection: (selection: SelectionState | null) => void;
   setPageTranslation: (page: number, text: string) => void;
@@ -78,10 +98,11 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   totalPages: 1,
   zoom: 1.0,
   theme: 'light',
-  layout: 'continuous',
+  layout: 'single', // Default to single page for instant 60fps load and zero lag
   sourceLang: 'auto',
   targetLang: 'en',
   ttsRate: 1.0,
+  ttsPitch: 1.0,
   ttsVoiceURI: undefined,
 
   isThumbnailsOpen: false,
@@ -93,6 +114,11 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   isQuizModalOpen: false,
   isStatsOpen: false,
   isShortcutsOpen: false,
+  isAudioModalOpen: false,
+  isOcrModalOpen: false,
+
+  ocrTriggerPage: null,
+  ocrProgress: null,
 
   pageTranslations: {},
   isTranslatingPage: false,
@@ -103,10 +129,15 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       currentDoc: doc,
       currentPage: doc?.lastReadPage || 1,
       totalPages: doc?.totalPages || 1,
-      sourceLang: doc?.sourceLanguage || 'auto',
+      sourceLang:
+        doc?.sourceLanguage && doc.sourceLanguage !== 'auto'
+          ? doc.sourceLanguage
+          : inferLanguageFromTitle(doc?.title || '') || 'auto',
       targetLang: doc?.targetLanguage || 'en',
       pageTranslations: {},
       activeSelection: null,
+      ocrTriggerPage: null,
+      ocrProgress: null,
     });
   },
 
@@ -120,13 +151,12 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 
   goToPage: (page) => {
-    const { totalPages, currentDoc } = get();
+    const { totalPages, currentDoc, layout } = get();
     const clamped = Math.max(1, Math.min(page, Math.max(1, totalPages)));
     set({ currentPage: clamped });
 
     if (currentDoc) {
       updateDocumentProgress(currentDoc.id, clamped);
-      // Update URL query parameter without full reload
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         url.searchParams.set('page', clamped.toString());
@@ -134,12 +164,28 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       }
     }
 
-    // Scroll to page element if exists
     if (typeof window !== 'undefined') {
-      const pageEl = document.getElementById(`pdf-page-${clamped}`);
-      if (pageEl) {
-        pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const scrollContainer = document.getElementById('reader-scroll-container');
+          if (!scrollContainer) return;
+
+          if (layout === 'single') {
+            scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+          }
+
+          const pageEl = document.getElementById(`pdf-page-${clamped}`);
+          if (!pageEl) return;
+
+          const targetTop =
+            scrollContainer.scrollTop +
+            pageEl.getBoundingClientRect().top -
+            scrollContainer.getBoundingClientRect().top -
+            8;
+          scrollContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
+        });
+      });
     }
   },
 
@@ -186,6 +232,8 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
 
   setTtsRate: (ttsRate) => set({ ttsRate }),
 
+  setTtsPitch: (ttsPitch) => set({ ttsPitch }),
+
   setTtsVoiceURI: (ttsVoiceURI) => set({ ttsVoiceURI }),
 
   toggleThumbnails: () => set((state) => ({ isThumbnailsOpen: !state.isThumbnailsOpen, isOutlineOpen: false })),
@@ -205,6 +253,14 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   setStatsOpen: (isStatsOpen) => set({ isStatsOpen }),
 
   setShortcutsOpen: (isShortcutsOpen) => set({ isShortcutsOpen }),
+
+  setAudioModalOpen: (isAudioModalOpen) => set({ isAudioModalOpen }),
+
+  setOcrModalOpen: (isOcrModalOpen) => set({ isOcrModalOpen }),
+
+  triggerOcrForPage: (ocrTriggerPage) => set({ ocrTriggerPage }),
+
+  setOcrProgress: (ocrProgress) => set({ ocrProgress }),
 
   setActiveSelection: (activeSelection) => set({ activeSelection }),
 

@@ -63,3 +63,8 @@ export function getLanguageByCode(code: string): SupportedLanguage {
     }
   );
 }
+
+export function inferLanguageFromTitle(title: string): string | null {
+  if (/\b(deutsch|german|kontext[-\s]?b2)\b/i.test(title)) return 'de';
+  return null;
+}

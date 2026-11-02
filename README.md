@@ -9,7 +9,7 @@ Inspired by [linguapdf.vercel.app](https://linguapdf.vercel.app/), **LinguaPDF P
 ## ✨ Key Features
 
 ### 1. 🚀 Instant "Go to Page" Jump & Scrubber (Key Highlight)
-- **Direct Page Jump**: Type a page number into the top bar, press <kbd>Enter</kbd>, and jump in milliseconds.
+- **Direct Page Jump**: Type a page number into the top bar, press <kbd>Enter</kbd>, and jump to that page in the reader viewport.
 - **Quick Jump Command Palette**: Press <kbd>Ctrl+G</kbd> (or <kbd>Cmd+G</kbd>) from anywhere to trigger the quick jump modal with ±5, ±10, First, and Last page controls.
 - **Visual Scrubber & Slider**: Live progress percentage indicator with smooth drag scrubbing.
 - **Deep Linking**: Share or bookmark exact pages with `/read/[docId]?page=45`.
@@ -21,7 +21,7 @@ Inspired by [linguapdf.vercel.app](https://linguapdf.vercel.app/), **LinguaPDF P
 - **PDF.js Web Worker**: Heavy parsing executes off the main thread; smooth 60fps scrolling.
 - **IndexedDB Multi-Tier Caching**: Caches full documents, text streams, and render metadata in browser IndexedDB (`idb`).
 - **Zero Server Uploads**: 100% privacy-first. Documents never leave your device.
-- **OCR Fallback (Tesseract.js)**: Dynamically loaded on-demand for scanned PDFs and image-only pages.
+- **OCR Fallback (Tesseract.js)**: Run OCR on the currently viewed PDF page when needed. OCR creates selectable, clickable word overlays, supports a selectable recognition language, and reuses its language worker for subsequent pages.
 
 ### 3. 🌐 Instant Translation & Romanization
 - **1-Click Word Translation**: Click any word in the document to instantly see its translation, part of speech, and sentence context.

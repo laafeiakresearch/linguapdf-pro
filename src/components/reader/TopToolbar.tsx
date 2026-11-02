@@ -26,6 +26,8 @@ import {
   Loader2,
   Languages,
   ArrowRightLeft,
+  Volume2,
+  ScanText,
 } from 'lucide-react';
 
 interface TopToolbarProps {
@@ -63,6 +65,9 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onTranslateFullPage, voc
     setStatsOpen,
     setShortcutsOpen,
     isTranslatingPage,
+    triggerOcrForPage,
+    ocrTriggerPage,
+    ocrProgress,
   } = useReaderStore();
 
   const [pageInput, setPageInput] = useState(currentPage.toString());
@@ -251,6 +256,23 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({ onTranslateFullPage, voc
 
       {/* Right Tools: Side-by-side, Full page translate, Vocab, Flashcards, Stats, Theme */}
       <div className="flex items-center gap-1.5 shrink-0">
+        {currentDoc?.type === 'pdf' && (
+          <button
+            type="button"
+            onClick={() => triggerOcrForPage(currentPage)}
+            disabled={ocrTriggerPage !== null || ocrProgress?.pageNumber === currentPage}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50 text-xs font-semibold border border-amber-200 dark:border-amber-800/60 transition-colors"
+            title={`Recognize text on the currently viewed page (${currentPage})`}
+          >
+            {ocrTriggerPage === currentPage || ocrProgress?.pageNumber === currentPage ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <ScanText className="w-3.5 h-3.5" />
+            )}
+            <span>OCR page</span>
+          </button>
+        )}
+
         {/* Side-by-side mode toggle */}
         <button
           onClick={toggleSideBySide}

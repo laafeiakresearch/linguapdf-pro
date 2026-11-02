@@ -21,6 +21,7 @@ import { FlashcardsModal } from '../vocabulary/FlashcardsModal';
 import { QuizModal } from '../vocabulary/QuizModal';
 import { StatsDrawer } from '../common/StatsDrawer';
 import { ShortcutHelpModal } from '../common/ShortcutHelpModal';
+import { AudioVoiceModal } from '../common/AudioVoiceModal';
 import { translateText } from '@/lib/translation/translator';
 import { Loader2, AlertCircle } from 'lucide-react';
 
@@ -51,6 +52,8 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({ docId, initialPa
     sourceLang,
     targetLang,
     layout,
+    setAudioModalOpen,
+    triggerOcrForPage,
   } = useReaderStore();
 
   const [loading, setLoading] = useState(true);
@@ -92,9 +95,9 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({ docId, initialPa
           setPdfDoc(loadedPdf);
           setTotalPages(loadedPdf.numPages);
 
-          const extractedOutline = await extractPdfOutline(loadedPdf);
-          if (isCancelled) return;
-          setOutline(extractedOutline);
+          void extractPdfOutline(loadedPdf).then((extractedOutline) => {
+            if (!isCancelled) setOutline(extractedOutline);
+          });
         } else if (doc.totalPages) {
           setTotalPages(doc.totalPages);
         }
@@ -103,9 +106,13 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({ docId, initialPa
         const targetPage = initialPage || doc.lastReadPage || 1;
         goToPage(targetPage);
 
-        // Fetch vocab count
-        const vocab = await getAllVocabulary();
-        setVocabCount(vocab.length);
+        void getAllVocabulary()
+          .then((vocab) => {
+            if (!isCancelled) setVocabCount(vocab.length);
+          })
+          .catch((err) => {
+            console.error('Failed to load vocabulary count:', err);
+          });
       } catch (err: any) {
         console.error('Failed to load document:', err);
         if (!isCancelled) setError(err.message || 'Error loading document');
@@ -165,9 +172,16 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({ docId, initialPa
       } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         setFlashcardsModalOpen(true);
+      } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        setAudioModalOpen(true);
+      } else if (e.key === 'o' || e.key === 'O') {
+        e.preventDefault();
+        triggerOcrForPage(currentPage);
       } else if (e.key === 'Escape') {
         setActiveSelection(null);
         setGoToPageModalOpen(false);
+        setAudioModalOpen(false);
       }
     },
     [
@@ -179,6 +193,9 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({ docId, initialPa
       setVocabularyModalOpen,
       setFlashcardsModalOpen,
       setActiveSelection,
+      setAudioModalOpen,
+      triggerOcrForPage,
+      currentPage,
     ]
   );
 
@@ -239,7 +256,7 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({ docId, initialPa
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-100 dark:bg-zinc-950 transition-colors">
+    <div className="h-screen overflow-hidden flex flex-col bg-zinc-100 dark:bg-zinc-950 transition-colors">
       {/* Top Navigation & Controls */}
       <TopToolbar
         onTranslateFullPage={handleTranslateFullPage}
@@ -247,7 +264,10 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({ docId, initialPa
       />
 
       {/* Main Reader Viewport */}
-      <main className="flex-1 overflow-y-auto pb-28 pt-2 relative custom-scrollbar">
+      <main
+        id="reader-scroll-container"
+        className="min-h-0 flex-1 overflow-y-auto pb-28 pt-2 relative custom-scrollbar"
+      >
         {currentDoc.type === 'pdf' && pdfDoc ? (
           <div className="w-full flex flex-col items-center">
             {layout === 'single' ? (
@@ -280,6 +300,7 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({ docId, initialPa
       <QuizModal />
       <StatsDrawer />
       <ShortcutHelpModal />
+      <AudioVoiceModal />
     </div>
   );
 };
